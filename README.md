@@ -1,6 +1,8 @@
-# Agent Interrupt Notifier
+![Agent Notifier](project-banner.png)
 
-**Proposal for an attention-aware notifier for terminal-based AI agent workflows- when the user is still in a terminal (TUI), or left for the desktop (GUI). Agent interruption handled smooth like butter.**
+# Agent Notifier
+
+**Proposal for an attention-aware notifier for terminal-based AI agent workflows- when the user is still in a terminal (TUI), or left for the desktop (GUI). Agent follow ups handed smooth like butter.**
 
 > **Status:** Proposal — GitHub Issues TBD
 
@@ -10,15 +12,9 @@
 
 Developers increasingly run multiple terminal-based AI agents (Claude Code, Codex CLI, OpenCode, and similar harnesses) that work autonomously for minutes at a time. While an agent works, the developer moves on — a different command, a different pane, or out of the terminal entirely into a browser or another app. The problem is the **return trip**: when an agent **finishes** or **gets blocked needing input**, there is no good way to find out without babysitting the terminal it runs in.
 
-Today the user cannot:
+![The return-trip problem](problem.png)
 
-- **Find out promptly, wherever they are** — the current options are to watch the terminal (defeating delegation) or check back manually (an attention tax that scales badly with the number of concurrent agents)
-- **Distinguish _done_ from _blocked_ from _errored_** at a glance, without scrolling the log
-- **Act on the interrupt without a full context switch** — approve, answer a quick question, or redirect, without diving all the way back into the session
-- **Jump straight to the exact pane that needs them** — instead of hunting across several panes for the one that's blocked
-- **Catch up on what they missed** on their own terms, without a standing UI cluttering the screen
-
-As the number of parallel agentic workflows grows, the cost of _managing the interrupts_ threatens to become the job itself. This problem exists whether the user is **still in a terminal** or **away in a GUI app** — the two surfaces differ, but the underlying need is identical.
+As the number of parallel agentic workflows grows, the cost of _managing them_ threatens to become the job itself. This problem exists whether the user is **still in a terminal** or **away in a GUI app** — the two surfaces differ, but the underlying need is identical.
 
 ---
 
@@ -26,9 +22,9 @@ As the number of parallel agentic workflows grows, the cost of _managing the int
 
 This repository contains two companion proposals targeting the two "worlds" a user can be in when an agent needs them. Both share the same underlying infrastructure (harness adapters that parse logs, an orchestrator that phrases the gist as a question and generates responses, a two-stage event protocol, attention detection, and a delivery router) but deliver different experiences matched to where the user's attention is.
 
-The design borrows its interaction model from mobile OS notifications:
+The design borrows its interaction model from the Claude follow-up card — a summarized question with numbered templated options, a "Something else" custom reply, a Skip, and keyboard navigation:
 
-![The mobile-notification metaphor mapped to terminal agent interrupts](docs/mockups/original-concept.png)
+![The Claude follow-up card, mapped to terminal agent interrupts](docs/mockups/original-concept.png)
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -101,7 +97,7 @@ When the user is still in a terminal — a different command in the same termina
 
 ## Proposal B: GUI/Desktop Notifier (user has left the terminal)
 
-![Desktop Banner Mockup](docs/mockups/desktop-banner-mockup.png)
+![Desktop Banner Mockup](docs/mockups/desktop-banner-mockup-nanobanana.png)
 
 When the user has left the terminal entirely — browser, another app, a second monitor — the tool reaches them with its **own custom slide-in banner**: a window that drops down from the top of the screen with a chime, in the idiom of an Android/iOS notification, dwells above the current app for a configurable period (default 10s), and slides back up into a backlog stack if untouched. It is drawn as a **topmost window that does not take keyboard focus** (`SWP_NOACTIVATE`), so it appears over the user's work without hijacking their typing — exactly how a phone banner behaves. This is the case nothing else addresses, and it is built first.
 
@@ -157,7 +153,7 @@ When the user has left the terminal entirely — browser, another app, a second 
 | Document                                              | Description                                          |
 | ----------------------------------------------------- | ---------------------------------------------------- |
 | [Mockups Plan](docs/mockups/MOCKUPS-PLAN.md)          | What each mockup shows and how to produce it         |
-| [Original Concept](docs/mockups/MOCKUPS-PLAN.md#0-original-concept-sketch) | The mobile-notification metaphor sketch |
+| [Original Concept](docs/mockups/MOCKUPS-PLAN.md#0-original-concept-sketch) | The Claude follow-up card, mapped to terminal interrupts |
 
 ### Proposal A: TUI
 

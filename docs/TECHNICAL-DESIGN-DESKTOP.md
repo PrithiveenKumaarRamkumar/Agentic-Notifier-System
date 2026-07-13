@@ -49,7 +49,7 @@ Three components over the same semantic protocol as the TUI variant. The agents 
 ```
 
 - **Adapters** — same contract as Proposal A: observe a harness, **parse its log output** into a structured extraction (semantic state, raw prompt text, candidate options, and a locator), launch tasks. They deliberately do **not** inject replies into a running session (the user answers in the real terminal), keeping them "observe-and-launch." Harness-specific parsing stays here.
-- **Orchestrator** — turns the structured extraction into what the user sees: the command name, the gist **phrased as a question**, expandable detail, the **templated responses** plus a "Something else…" custom-reply option, and the jump locator. It also tracks each interrupt's lifecycle (`raised → acknowledged → resolved / superseded`). Shared across harnesses.
+- **Orchestrator** — turns the structured extraction into what the user sees: the command name, the gist **phrased as a question**, the `logSpan` for the expand/peek views, the **templated responses** plus a "Something else…" custom-reply option, and the jump locator. It also tracks each interrupt's lifecycle (`raised → acknowledged → resolved / superseded`). Shared across harnesses.
 - **Notifier** — detects the user's attention state, chooses the channel, renders the custom slide-in banner (topmost, without taking focus), and on click executes the return (raise the terminal window, focus the exact pane).
 
 ## 3. Semantic Event Protocol
@@ -86,7 +86,7 @@ Delivery is a **custom window the tool owns and draws itself**, not the native W
 | Slide-in from top + chime    | Topmost window animated down, audio cue                             |
 | Transient popup              | Dwells for a configurable period (default 10s), then slides up      |
 | Persistent backlog / stack   | Own backlog surface, newest-first (see [§9](#9-state-attribution-reality) note) |
-| Concise + expandable         | Collapsed banner → click/hotkey expands to full detail             |
+| Concise + expandable         | Click expands to the log slice; press-and-hold peeks (see §7)        |
 | Inline call-to-action        | Templated responses + inline prompt bar                             |
 | Respect DND                  | Query `FocusSessionManager.IsFocusActive`; suppress banner, stack only |
 
@@ -148,6 +148,8 @@ The body the user reads is the **gist of the parsed return log, phrased as a que
 
 - For **`done`**, the notification often carries enough to decide in place — read the concise result, optionally hit a light action, frequently dismiss without returning at all.
 - For **`needs_input` / `error`**, the real back-and-forth needs the terminal's full context (scrollback, exact prompt, surrounding state). The notification's most valuable feature is therefore **precise navigation**, not inline reply. Inline text reply is a minor convenience here, not the core interaction.
+
+**Expand works exactly as in the TUI variant** (see [TUI TDD §7](TECHNICAL-DESIGN-TUI.md#7-expand-the-hybrid-log-slice-view)): a click on the banner's caret inline-expands to the `logSpan` slice with a `^` to collapse, and press-and-hold on the query peeks the wider log context and springs back on release. On this platform the press begins only after the first click has granted the banner focus (per [§6](#6-the-foreground-and-focus-model)), and the keyboard equivalents (`Enter`/caret to expand, a held key to peek) apply unchanged. The peek remains a pure enhancement over the accessible inline expand.
 
 ## 8. Jump-to-Pane and the Multiplexer Configurations
 
@@ -214,7 +216,8 @@ The design absorbs the imperfection by keeping the state-source **behind the ada
 | Click **Something else…**   | Open input box for a freeform reply                 |
 | Type in input box + send   | Send freeform reply back via adapter → toward `resolved` |
 | Click **Go to pane →**      | Raise terminal window, then `select-pane`           |
-| Click body / expand         | Show full detail (→ `acknowledged`)                 |
+| Click caret / expand        | Inline expand to the log slice (→ `acknowledged`); `^` collapses |
+| Press-and-hold the query    | Peek wider log context; springs back on release     |
 | Dwell elapses (~10s, config) | Untouched banner slides up; item stays in stack as `raised` |
 | Interact during dwell       | Dwell timer cancelled; banner stays until acted/dismissed |
 | Agent self-resolves/errors  | Interrupt retired as `superseded`, leaves stack     |

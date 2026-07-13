@@ -6,12 +6,13 @@ Every mockup must reinforce the two theses: **(1)** the tool is absent-by-defaul
 
 | # | File                          | Surface                                   | Used in                          |
 | - | ----------------------------- | ----------------------------------------- | -------------------------------- |
-| 0 | `original-concept.png`        | The mobile-notification metaphor          | README (Documentation)           |
+| 0 | `original-concept.png`        | The Claude follow-up card, mapped         | README (Documentation)           |
 | 1 | `tui-overlay-mockup.png`      | In-TUI floating overlay (fzf-style)       | README (Proposal A), TUI TDD §6  |
 | 2 | `desktop-banner-mockup.png`   | Custom slide-in banner (topmost, no focus) | README (Proposal B), Desktop TDD §5 |
-| 3 | `expanded-detail-mockup.png`  | Expanded detail view with inline actions  | Both TDDs (inline action surface)|
+| 3 | `expanded-detail-mockup.png`  | Hybrid expand: log-slice inline + press-hold peek | Both TDDs (§7 expand)|
 | 4 | `template-actions-mockup.png` | Templated responses to the question + "Something else…" | Both TDDs (inline action surface)|
 | 5 | `pull-surface-mockup.png`     | Pull surface / backlog stack              | TUI TDD §9, Desktop TDD §5       |
+| 6 | `stepper-mockup.png`          | Stepper card for an interrupt with 4+ questions | Both TDDs (multi-question follow-ups) |
 
 The ASCII sketches below double as (a) the layout brief for a rendered image and (b) a usable fallback if the PNG isn't produced — the reference repo embeds ASCII previews directly in Markdown, and this repo does the same.
 
@@ -19,11 +20,11 @@ The ASCII sketches below double as (a) the layout brief for a rendered image and
 
 ## 0. Original Concept Sketch
 
-**Purpose:** anchor the whole proposal in the mobile-notification metaphor it borrows from, so a reader immediately understands the design language.
+**Purpose:** anchor the whole proposal in the **Claude follow-up card** — the interaction pattern the design borrows from — so a reader immediately understands the design language.
 
-**Must show:** a phone-style notification shade being pulled down, with (a) a concise notification collapsed, (b) the same one expanded, (c) a templated-response button row, (d) an inline reply bar, and (e) a stack of piled notifications with the most recent on top. Annotate each with the terminal-agent equivalent (name → command, body → **the agent's log gist phrased as a question**, buttons → templated responses + "Something else…", bar → custom reply routed to the session, stack → backlog of unresolved interrupts).
+**Must show:** on the left, a faithful rendering of the Claude follow-up card: the question at top, a set of numbered options (the first one selected/highlighted with a return arrow), a "✎ Something else" row, a "Skip" button, an "Or reply directly…" input bar showing the model label, and the navigation hint (`↑↓ to navigate · Enter to select · or type below`). On the right, a two-column table mapping each card element to its terminal-agent equivalent: question → **the agent's log gist phrased as a question**; command name → the command that's calling you (shown above the query); numbered options → templated responses parsed from the log; ✎ Something else → custom reply routed to the session; Skip → ignore or auto-pick the most relevant; Enter / ↑↓ / ←→ → select, move within a question, move between questions.
 
-**How to produce:** a simple annotated illustration; can be hand-sketched or generated. It is explicitly the "here is the metaphor" figure. Include the drop-down-then-slide-up motion and a note that the banner dwells (~10s, configurable) before retracting into the stack.
+**How to produce:** a clean annotated illustration; can be hand-sketched or generated. It is explicitly the "here is the model we're borrowing" figure — the left half should look like the real Claude follow-up card, the right half like a plain mapping table.
 
 **Rendered:**
 
@@ -96,39 +97,54 @@ The ASCII sketches below double as (a) the layout brief for a rendered image and
 
 **Rendered:**
 
-![Desktop banner](desktop-banner-mockup.png)
+![Desktop banner](desktop-banner-mockup-nanobanana.png)
 
 ---
 
-## 3. Expanded Detail View with Inline Actions
+## 3. Expand: the Hybrid Log-Slice View
 
-**Purpose:** demonstrate the "concise, then expandable" principle — the same notification opened to full detail while keeping the actions reachable.
+**Purpose:** demonstrate the "concise, then verify against the source" principle. Expand is not a separate detail blob — it reveals the exact `logSpan` the summary was parsed from, so the user can check the question against the real log. Two gestures, borrowed from mobile: **click/tap** toggles a committed inline expand (`^` to collapse); **press-and-hold** peeks a wider view that springs back on release.
 
-**Must show:** the notification expanded to reveal full agent output / prompt / log (e.g. both migration diffs behind the collapsed question); scroll affordance for long content; and the templated responses + "Something else…" bar still present at the bottom so the user can act after reading. Show this once in a neutral frame usable by both variants (note in-caption which chrome differs per variant).
+**Must show:** two states side by side or stacked — (a) the **inline expand**: the question with its log slice opened below it, labeled with the source range (`from the log · lines 214–219`), the agent's actual question highlighted within the slice, a `^` collapse caret, and the templated responses + "Something else…" still reachable below; and (b) the **press-and-hold peek**: the wider log with a few dimmed context lines above and below the highlighted source lines, a "release to collapse" hint, and the rest of the stack blurred behind it. Caption that both render the same `logSpan` and that the peek is a pure enhancement over the accessible inline expand.
 
-**Layout brief:**
+**Layout brief — inline expand (committed):**
 
 ```
-  ┌─ claude: refactor auth module — detail ──────── ▴ collapse ─┐
-  │  Q: Which migration strategy should I use?                  │
-  │  State: blocked (needs_input)          runtime 4m 12s        │
-  │  ───────────────────────────────────────────────────────── │
-  │  Option A — in-place column migration                       │
-  │    + ALTER TABLE users ADD COLUMN ...                       │
-  │    - (no data backfill)                                     │
-  │  Option B — shadow table + backfill                         │
-  │    + CREATE TABLE users_new ...                             │
-  │    + backfill job, then swap                          ⋮ ▾   │
-  │  ───────────────────────────────────────────────────────── │
-  │  [ In-place (A) ] [ Shadow (B) ] [ Something else… ] › …  ↵ │
-  └───────────────────────────────────────────────────────────── ┘
+  ┌─ ⌃ collapse ──────────────────────────────────────┐
+  │  Q: Which migration strategy should I use?         │
+  │  ┌ from the log · lines 214–219 ─────────────────┐ │
+  │  │ psql: column "role" cannot be added with       │ │
+  │  │   NOT NULL and no default on a populated table │ │
+  │  │ I can migrate two ways — which?         (bold) │ │  ← the slice the
+  │  │   A) in-place ALTER   B) shadow table+backfill │ │     summary came from
+  │  │ ▸ waiting for your choice…                     │ │
+  │  └─────────────────────────────────────────────────┘ │
+  │  [ In-place (A) ] [ Shadow (B) ] [ Something else… ] │
+  └──────────────────────────────────────────────────────┘
 ```
 
-**How to produce:** same rendering approach as #1/#2; the key is showing meaningful, non-lorem detail so the "expand is worth it" point lands.
+**Layout brief — press-and-hold peek (transient, springs back on release):**
+
+```
+  ┌─ 👁 Peeking full log ───────────── release to collapse ─┐
+  │  Which migration strategy should I use?                 │
+  │  ┌──────────────────────────────────────────────────┐  │
+  │  │ [212] running migration: add users.role   (dim)   │  │  ← context, dimmed
+  │  │ [213] $ psql -f migrations/003_role.sql    (dim)  │  │
+  │  │ [214] ERROR: column "role" cannot be added (hot)  │  │  ← source lines,
+  │  │ [218] I can migrate two ways — which?      (hot)  │  │     highlighted
+  │  │ [221] ▸ waiting for your choice…           (hot)  │  │
+  │  └──────────────────────────────────────────────────┘  │
+  │  lines 214–221 fed the summary · the rest is context    │
+  └──────────────────────────────────────────────────────────┘
+     (the stack sits blurred behind this; lifting the press restores it)
+```
+
+**How to produce:** same rendering approach as #1/#2. The essential storytelling points are (1) the source range label tying the slice to the summary, (2) the highlighted-vs-dimmed distinction in the peek, and (3) a visible `^` caret on the committed expand versus a "release to collapse" hint on the peek. Show real log content, not lorem, so the provenance point lands.
 
 **Rendered:**
 
-![Expanded detail](expanded-detail-mockup.png)
+![Expanded detail](expanded-detail-mockup-nanobanana.png)
 
 ---
 
@@ -183,6 +199,39 @@ The ASCII sketches below double as (a) the layout brief for a rendered image and
 **Rendered:**
 
 ![Pull surface](pull-surface-mockup.png)
+
+---
+
+## 6. Stepper Card (interrupt with 4+ questions)
+
+**Purpose:** show how the follow-up card scales when a single interrupt needs to ask **several** questions. When the agent's block resolves into more than three questions, the stacked card would grow too tall (the reply bar scrolls off), so the card switches to a **stepper**: one question at a time, fixed height. This is the ≥4-question counterpart to the templated-response card — the two differ only by question count (≤3 → stacked, all visible; ≥4 → stepper, one at a time).
+
+**Must show:** a segmented progress bar at the top (filled segments = answered, a distinct current segment, faint segments ahead) with a "3 of 4" counter; the command name above the current question; the current question with its numbered options (first selected as a highlight bar) plus a "✎ Something else"; an **"Answered" chip row** pinning the earlier answers (since they're no longer visible, this is what keeps the stepper from feeling like a void); a **Back / Skip / Next** control row (Next as the primary action); the shared "Or reply directly…" bar; and a footer hint covering both axes of navigation (`↑↓ options · ←→ questions · Enter select · Skip all to defer`). A short caption should make explicit that the stepper appears **for an interrupt that raises a stack of questions**, and that ≤3 questions use the stacked card instead.
+
+**Layout brief:**
+
+```
+  ┌─ agent needs you · 3 of 4 ─────────────────────────────┐
+  │  ▓▓▓▓  ▓▓▓▓  ▓▓▓▓  ░░░░                                  │  ← progress: 2 done, current, ahead
+  │  ● claude: refactor auth module              ◐ blocked  │  ← command above the query
+  │  Assume native psmux, or WSL tmux too?                  │
+  │  ▏1  Native psmux only — simplest path            ↵ ▕   │  ← selected (highlight bar)
+  │   2  Support both from day one                          │
+  │   3  WSL tmux only — no native dep                      │
+  │   ✎  Something else                                     │
+  │  Answered  [1 · GUI banner first] [2 · Claude Code]     │  ← pinned prior answers
+  │  ─────────────────────────────────────────────────────  │
+  │  [← Back]                        [Skip]   [ Next → ]    │
+  └──────────────────────────────────────────────────────────┘
+     › Or reply directly…
+     ↑↓ options · ←→ questions · Enter select · Skip all to defer
+```
+
+**How to produce:** same flat xterm rendering as the other TUI mockups. The essential storytelling points are (1) the segmented progress bar conveying "how much is left" that the stacked card gives at a glance, (2) the Answered chip row standing in for the hidden earlier questions, and (3) the caption tying the stepper to the multi-question / stack-of-interrupts case.
+
+**Rendered:**
+
+![Stepper card](stepper-mockup.png)
 
 ---
 

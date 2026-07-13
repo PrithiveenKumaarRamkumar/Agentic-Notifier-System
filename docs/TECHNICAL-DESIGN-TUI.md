@@ -12,11 +12,12 @@
 4. [Attention Detection (In-TUI)](#4-attention-detection-in-tui)
 5. [Delivery Router](#5-delivery-router)
 6. [The Floating Overlay](#6-the-floating-overlay)
-7. [Inline Action Surface](#7-inline-action-surface)
-8. [Jump-to-Pane](#8-jump-to-pane)
-9. [Pull Surface (Backlog Stack)](#9-pull-surface-backlog-stack)
-10. [Interaction Model](#10-interaction-model)
-11. [Verified Feasibility Notes](#11-verified-feasibility-notes)
+7. [Expand: the Hybrid Log-Slice View](#7-expand-the-hybrid-log-slice-view)
+8. [Inline Action Surface](#8-inline-action-surface)
+9. [Jump-to-Pane](#9-jump-to-pane)
+10. [Pull Surface (Backlog Stack)](#10-pull-surface-backlog-stack)
+11. [Interaction Model](#11-interaction-model)
+12. [Verified Feasibility Notes](#12-verified-feasibility-notes)
 
 ---
 
@@ -69,10 +70,19 @@ interface RawExtraction {
   command: string;            // the notification NAME — the command the user issued
   state: "working" | "done" | "needs_input" | "error";
   promptText: string;         // the raw question/prompt parsed from the log
-  logTail: string;            // the parsed return-log excerpt (source of the gist)
+  logSpan: LogSpan;           // PROVENANCE — the exact log region the summary came from
   candidates: string[];       // option strings the adapter could extract from the log
   locator: PaneLocator;       // where to jump if the user wants full context
   createdAt: Date;
+}
+
+// The provenance span: which lines of the log the summary was derived from.
+// This is what the expand/peek views render — never a separate detail blob.
+interface LogSpan {
+  sourceLines: string[];      // the tight slice the summary keyed on (the "slice" view)
+  sourceRange: [number, number]; // e.g. [214, 221] — shown as "lines 214–221"
+  contextBefore: string[];    // a few dimmed lines of surrounding context (the "peek" view)
+  contextAfter: string[];
 }
 
 // STAGE 2 — produced by the orchestrator (shared, harness-agnostic)
@@ -81,7 +91,7 @@ interface PhrasedInterrupt {
   command: string;            // shown as the notification name
   state: "working" | "done" | "needs_input" | "error";
   question: string;           // the gist, PHRASED AS A QUESTION to the user
-  detail: string;             // the EXPAND view — full output / prompt / log
+  logSpan: LogSpan;           // carried through — the EXPAND/PEEK views render this
   actions: Action[];          // templated responses + a "Something else…" entry
   locator: PaneLocator;
   lifecycle: "raised" | "acknowledged" | "resolved" | "superseded";
@@ -102,7 +112,9 @@ interface PaneLocator {
 }
 ```
 
-**The split:** the **adapter parses** (harness-specific log formats → structured `promptText` + `candidates`); the **orchestrator phrases and templates** (structured extraction → a question the user reads + contextual response buttons + the custom-reply option). The delivery layer then decides *where and how* to show it.
+**The split:** the **adapter parses** (harness-specific log formats → structured `promptText` + `candidates` + the `logSpan` it keyed on); the **orchestrator phrases and templates** (structured extraction → a question the user reads + contextual response buttons + the custom-reply option). The delivery layer then decides *where and how* to show it.
+
+**Provenance is the point of the expand.** The summarized question the user reads is *derived* from the log, so the expand must show the user exactly the log region it was derived from — not the whole scrollback, and not a separately-authored "detail" string that could drift from the summary. The adapter therefore retains the `logSpan` (the lines it keyed on, plus a little surrounding context), and every expand/peek view renders that span with the summary restated above it. This lets the user verify the summary against the real source in one glance.
 
 ### Interrupt lifecycle
 
@@ -175,9 +187,40 @@ The touchstone is fzf's `Ctrl-R`: a fast, ephemeral overlay that pops over whate
 - The body is the parsed log gist **rephrased as a question** the user answers
 - Status icon reflects state: `●` running, `◐` waiting/blocked, `✓` done, `✗` error
 - After the dwell period an untouched overlay slides up into the stack; interacting cancels the timer
-- Dismissing or auto-retracting does **not** resolve the interrupt — it returns to the stack (see [§9](#9-pull-surface-backlog-stack)); only a routed response or supersession resolves it
+- Dismissing or auto-retracting does **not** resolve the interrupt — it returns to the stack (see [§10](#10-pull-surface-backlog-stack)); only a routed response or supersession resolves it
 
-## 7. Inline Action Surface
+## 7. Expand: the Hybrid Log-Slice View
+
+The summarized question is derived from the log, so the user must be able to see *exactly the log region it came from* — the `logSpan` from the protocol. Two gestures reveal it, borrowed from the mobile pattern of tap-to-open versus press-and-hold-to-peek, because they serve two different intents:
+
+**Click / `Enter` on the caret → inline expand (committed).** The question grows in place to reveal `logSpan.sourceLines` — the tight slice the summary keyed on — labeled with its range (e.g. *"from the log · lines 214–219"*) and the agent's actual question highlighted within it. A `^` (chevron-up) collapses it. The rest of the stack stays put, so the user keeps their place; this is the view to leave open while deciding or while typing a custom reply.
+
+```
+   ┌─ ⌃ collapse ──────────────────────────────────────┐
+   │  Which migration strategy should I use?            │
+   │  ┌ from the log · lines 214–219 ─────────────────┐ │
+   │  │ psql: column "role" cannot be added with       │ │
+   │  │   NOT NULL and no default on a populated table │ │
+   │  │ I can migrate two ways — which?                │ │  ← the slice the
+   │  │   A) in-place ALTER   B) shadow table+backfill │ │     summary came from
+   │  │ ▸ waiting for your choice…                     │ │
+   │  └─────────────────────────────────────────────────┘ │
+   │  [1 In-place (A)] [2 Shadow (B)] [3 Something else…] │
+   └──────────────────────────────────────────────────────┘
+```
+
+**Press-and-hold the query → peek (transient).** Holding the pointer/key on the query bar takes over the card with a wider view — `contextBefore` + `sourceLines` + `contextAfter`, the surrounding run dimmed and the summary-source lines highlighted — and springs back to the stack the instant the press is released. No navigation, no state change: a zero-commitment "what did it actually say?" glance that never loses the user's place.
+
+Both views render the same `logSpan`; the difference is only how much surrounding context each shows and whether it persists. The peek is a **pure enhancement** — everything it reveals is also reachable through the committed inline expand, so nothing is gated behind a gesture that keyboard-only or assistive-tech users can't perform.
+
+### Implementation notes
+
+- **Gesture disambiguation.** A quick tap/click toggles the inline expand; a press exceeding ~350 ms becomes the hold-peek. Guard the press with the equivalent of `preventDefault` and disabled text-selection so it doesn't start a selection.
+- **Release anywhere collapses.** Bind the release to the window, not the bar, so lifting the pointer outside the bar still springs back.
+- **Keyboard equivalents are mandatory.** A hardware keyboard has no "hold": map `Enter` / the caret to the inline expand, and a held key (e.g. `Space` or `p`) to the momentary peek. Never leave the peek pointer-only.
+- **Accessibility.** Press-and-hold is invisible to screen readers and hard for motor-impaired users; the committed inline expand is the accessible path and must expose the full `logSpan`.
+
+## 8. Inline Action Surface
 
 The body the user reads is the **gist of the parsed return log, phrased as a question** (e.g. *"Which migration strategy should I use?"*). Two affordances answer it, both routing the response back through the adapter into the agent's session **without the user re-entering it**:
 
@@ -186,7 +229,7 @@ The body the user reads is the **gist of the parsed return log, phrased as a que
 
 This is the highest-emphasis element in the TUI variant: it removes the context switch that otherwise makes managing many agents painful. Sending a response transitions the interrupt toward `resolved`; it leaves the stack only once the agent has moved on.
 
-## 8. Jump-to-Pane
+## 9. Jump-to-Pane
 
 For interrupts that deserve immediate, detailed attention, `g` moves the user to the waiting pane using the `PaneLocator`:
 
@@ -197,7 +240,7 @@ tmux select-pane   -t {session}:{window}.{pane}
 
 Because tmux exposes stable, server-wide identifiers addressable with fully-qualified targets, the notifier focuses the exact pane with no ambiguity — no hunting for which of several panes is blocked. In the TUI variant this is present but **secondary** to inline action; the user is already in a terminal, so acting in place is usually cheaper than jumping.
 
-## 9. Pull Surface (Backlog Stack)
+## 10. Pull Surface (Backlog Stack)
 
 A lightweight, on-demand list of unresolved and recent interrupts over the same event stream — the "swipe down to check" equivalent. It is **explicitly not always visible**.
 
@@ -215,7 +258,7 @@ A lightweight, on-demand list of unresolved and recent interrupts over the same 
 - Items retired as `superseded` (agent self-resolved) leave automatically, so nothing lingers falsely
 - It is the only review affordance in v1 — not a dashboard
 
-## 10. Interaction Model
+## 11. Interaction Model
 
 | Key         | Action                                      | Context          |
 | ----------- | ------------------------------------------- | ---------------- |
@@ -224,7 +267,8 @@ A lightweight, on-demand list of unresolved and recent interrupts over the same 
 | `1`–`9`     | Select a templated response                 | Overlay          |
 | _(last #)_  | "Something else…" → focus the inline bar     | Overlay          |
 | `›` + `↵`   | Send freeform inline reply                  | Overlay          |
-| `d`         | Expand to full detail view                  | Overlay          |
+| `d` / `Enter` on caret | Inline expand → log slice; `^` collapses | Overlay          |
+| hold `Space`/`p`, or press-and-hold | Peek full log; springs back on release | Overlay |
 | `g`         | Jump to the waiting pane                     | Overlay          |
 | `Esc`       | Dismiss overlay (→ `acknowledged`, stays in stack) | Overlay   |
 | `▾` / pull  | Open backlog stack                          | Global           |
@@ -232,7 +276,7 @@ A lightweight, on-demand list of unresolved and recent interrupts over the same 
 | `Enter`     | Reopen selected interrupt                   | Backlog          |
 | `x`         | Remove selected (only if `resolved`/`superseded`) | Backlog    |
 
-## 11. Verified Feasibility Notes
+## 12. Verified Feasibility Notes
 
 | Fact                                        | Status                                          | Note                                 |
 | ------------------------------------------- | ----------------------------------------------- | ------------------------------------ |
