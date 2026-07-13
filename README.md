@@ -6,6 +6,8 @@
 
 > **Status:** Proposal — GitHub Issues TBD
 
+![Agent Notifier banner](agent-notifier-banner.gif)
+
 ---
 
 ## The Problem
